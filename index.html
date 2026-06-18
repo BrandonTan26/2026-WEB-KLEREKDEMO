@@ -274,7 +274,9 @@ async function extractData() {
   const appInfo = queryAll('SELECT * FROM log_app_info LIMIT 1');
   if (appInfo.length) DATA.storeId = appInfo[0].store_id || '2L44';
   if (DATA.usi.length && DATA.usi[0].store_name) DATA.storeName = DATA.usi[0].store_name.replace(/\[.*\]/, '').trim();
+  
   extractPluNames();
+  
   const dates = [...new Set(DATA.tsale.map(t => t.date_tx).filter(Boolean))].sort().reverse();
   const dateSelect = document.getElementById('dateFilter');
   dateSelect.innerHTML = '<option value="">Semua Tanggal</option>' + dates.map(d => `<option value="${d}">${d}</option>`).join('');
@@ -282,17 +284,33 @@ async function extractData() {
   renderAll();
 }
 
+// ✅ FUNGSI PENTING: EKSTRAK NAMA PRODUK DARI STRUK
 function extractPluNames() {
   const receiptByFaktur = {};
-  DATA.receipt.forEach(r => { const faktur = r.faktur || r.bill_no; if (!faktur) return; receiptByFaktur[faktur] = ((r.body1||'') + (r.body2||'')).split('|').filter(l => l.trim()); });
+  DATA.receipt.forEach(r => { 
+    const faktur = r.faktur || r.bill_no; 
+    if (!faktur) return; 
+    receiptByFaktur[faktur] = ((r.body1||'') + (r.body2||'')).split('|').filter(l => l.trim()); 
+  });
   const transByBill = {};
   DATA.trans.forEach(t => { const b = t.bill_no; if (!transByBill[b]) transByBill[b] = []; transByBill[b].push(t); });
+  
   Object.keys(transByBill).forEach(billNo => {
     const lines = receiptByFaktur[billNo] || [];
     const trans = transByBill[billNo].sort((a,b) => (a.sort_no||0) - (b.sort_no||0));
-    const prodLines = lines.filter(l => { const m = l.match(/^(.+?)\s+(-?\d+(?:\.\d+)?)\s+([\d.,-]+)\s+([\d.,-]+)$/); if (!m) return false; return !/^(KP BRANDING|Tunai|Kembalian|Total|Disc\.|PPN|DONASI|===|---)/.test(m[1].trim()); });
+    const prodLines = lines.filter(l => { 
+      const m = l.match(/^(.+?)\s+(-?\d+(?:\.\d+)?)\s+([\d.,-]+)\s+([\d.,-]+)$/); 
+      if (!m) return false; 
+      return !/^(KP BRANDING|Tunai|Kembalian|Total|Disc\.|PPN|DONASI|===|---)/.test(m[1].trim()); 
+    });
     trans.forEach((t, idx) => {
-      if (prodLines[idx]) { const m = prodLines[idx].match(/^(.+?)\s+(-?\d+(?:\.\d+)?)\s+([\d.,-]+)\s+([\d.,-]+)$/); if (m) { const plu = String(t.plu); if (!DATA.pluNames[plu]) DATA.pluNames[plu] = m[1].trim(); } }
+      if (prodLines[idx]) { 
+        const m = prodLines[idx].match(/^(.+?)\s+(-?\d+(?:\.\d+)?)\s+([\d.,-]+)\s+([\d.,-]+)$/); 
+        if (m) { 
+          const plu = String(t.plu); 
+          if (!DATA.pluNames[plu]) DATA.pluNames[plu] = m[1].trim(); 
+        } 
+      }
     });
   });
 }
@@ -312,7 +330,7 @@ function computeStats() {
   return { sales, qtyMember, salesMember, uangFisik, totalCash, totalChange, totalTopup, totalWallet, totalCard, cashierIds, dataDate: dates.length ? dates[0] : '-', totalTx: tx.length, totalItem: tx.reduce((s,t) => s + (t.qty_pcs||0), 0) };
 }
 
-// ✅ FIXED: RANKING PRODUK PASTI MUNCUL
+// ✅ FIXED: RANKING PRODUK PASTI MUNCUL & AKURAT
 function computeProducts() {
   const tx = getFilteredTsale();
   const fakturs = new Set();
@@ -322,6 +340,8 @@ function computeProducts() {
   DATA.trans.forEach(t => {
     const tFaktur = String(t.faktur || '');
     const tBillNo = String(t.bill_no || '');
+    
+    // Filter: jika ada tanggal dipilih, hanya hitung item yang fakturnya ada di tanggal tersebut
     if (fakturs.size > 0 && !fakturs.has(tFaktur) && !fakturs.has(tBillNo)) return;
 
     const plu = String(t.plu);
@@ -425,6 +445,7 @@ function renderTransactions() {
   document.getElementById('txSearch').oninput = e => { const q = e.target.value.toLowerCase(); tbody.querySelectorAll('tr').forEach(tr => { tr.style.display = tr.textContent.toLowerCase().includes(q) ? '' : 'none'; }); };
 }
 
+// ✅ FIXED: RENDER PRODUK LENGKAP
 function renderProducts() {
   const products = computeProducts();
   const unique = products.length; const totalQty = products.reduce((s,p) => s + p.qty, 0); const totalOmzet = products.reduce((s,p) => s + p.omzet, 0);
